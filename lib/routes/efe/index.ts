@@ -2,6 +2,7 @@ import { load } from 'cheerio';
 import type { Route } from '@/types';
 import ofetch from '@/utils/ofetch';
 import cache from '@/utils/cache';
+import { parseDate } from '@/utils/parse-date';
 
 const rootUrl = 'https://efe.com';
 
@@ -65,7 +66,7 @@ async function handler(ctx) {
 
                 const title = $detail('title').first().text().trim();
                 const dateMatch = detail.match(/"datePublished":\s*"([^"]+)"/);
-                const pubDate = dateMatch ? dateMatch[1] : undefined;
+                const pubDate = dateMatch ? parseDate(dateMatch[1]) : undefined;
 
                 const content = $detail('article .entry-content, article .elementor-widget-theme-post-content').first();
                 const description = content.html() || '';
