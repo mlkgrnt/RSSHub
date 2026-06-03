@@ -25,6 +25,9 @@ jobs:
                   git remote add upstream https://github.com/DIYgod/RSSHub.git || true
                   git fetch upstream
                   git merge upstream/master --no-edit
+                  # GITHUB_TOKEN cannot push workflow file changes, restore them
+                  git checkout ORIG_HEAD -- .github/workflows/
+                  git diff --cached --quiet || git commit -m "merge upstream, preserve fork workflows"
                   git push origin master
 
             - name: Rebase custom onto master
@@ -38,6 +41,9 @@ jobs:
                       git cherry-pick $p || git cherry-pick --abort
                     done
                   fi
+                  # Restore workflow files from master to avoid push restriction
+                  git checkout master -- .github/workflows/
+                  git diff --cached --quiet || git commit -m "rebase custom, preserve fork workflows"
                   git push origin custom --force-with-lease
 
             - name: Build deploy
