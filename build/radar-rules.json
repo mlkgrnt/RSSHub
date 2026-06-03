@@ -16149,19 +16149,6 @@
       }
     ]
   },
-  "efe.com": {
-    "_name": "EFE Noticias",
-    ".": [
-      {
-        "title": "Noticias",
-        "docs": "https://docs.rsshub.app/routes/new-media",
-        "source": [
-          "/:category"
-        ],
-        "target": "/efe/efe/:category"
-      }
-    ]
-  },
   "egsea.com": {
     "_name": "e 公司",
     ".": [
@@ -41254,6 +41241,19 @@
           "/mu/frontend/pg/display/offline-exhibit"
         ],
         "target": "/shanghaimuseum/display/offline-exhibit"
+      }
+    ]
+  },
+  "shanximuseum.com.cn": {
+    "_name": "Shanxi Museum",
+    "www": [
+      {
+        "title": "Temporary Exhibitions",
+        "docs": "https://docs.rsshub.app/routes/travel",
+        "source": [
+          "/sx/exhibition/temporary.html"
+        ],
+        "target": "/shanximuseum/exhibition/temporary"
       }
     ]
   },

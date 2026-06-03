@@ -2860,9 +2860,6 @@
   "/eeo/kuaixun": [
     "nczitzk"
   ],
-  "/efe/:category?": [
-    "mlkgrnt"
-  ],
   "/egsea/flash": [
     "hillerliao"
   ],
@@ -7785,6 +7782,9 @@
     "magazian"
   ],
   "/shanghaimuseum/display/offline-exhibit/:type?": [
+    "magazian"
+  ],
+  "/shanximuseum/exhibition/temporary/:type?": [
     "magazian"
   ],
   "/shcstheatre/programs": [

@@ -931,7 +931,6 @@ export type RoutePath =
   | `/ecust/jxjy/news`
   | `/ecust/yjs`
   | `/eeo/kuaixun`
-  | `/efe/:category?`
   | `/egsea/flash`
   | `/ehentai/favorites/:favcat?/:order?/:page?/:routeParams?`
   | `/ehentai/search/:params?/:page?/:routeParams?`
@@ -2532,6 +2531,7 @@ export type RoutePath =
   | `/sfacg/novel/chapter/:id`
   | `/shanghaimuseum/display/offline-exhibit/:type?`
   | `/shanghaimuseum/information/news/:type?`
+  | `/shanximuseum/exhibition/temporary/:type?`
   | `/shcstheatre/programs`
   | `/shiep/:type/:id?`
   | `/shisu/en/:section`
