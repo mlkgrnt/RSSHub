@@ -94,6 +94,7 @@ jobs:
                           "grep*": "allow",
                           "git*": "allow",
                           "ls*": "allow",
+                          "rg*": "allow",
                           "sed*": "allow",
                           "cat*": "allow",
                           "echo*": "allow",
