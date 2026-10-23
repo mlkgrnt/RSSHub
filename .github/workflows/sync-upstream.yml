@@ -49,12 +49,20 @@ jobs:
               run: |
                   OLD_CUSTOM=$(git rev-parse origin/custom)
                   MERGE_BASE=$(git merge-base origin/master $OLD_CUSTOM)
-                  PATCHES=$(git rev-list --reverse $MERGE_BASE..$OLD_CUSTOM)
+                  # 只取非 merge 提交（merge 提交无法直接 cherry-pick），
+                  # 打不上的提交跳过并告警：多为已并入上游的改动
+                  PATCHES=$(git rev-list --reverse --no-merges $MERGE_BASE..$OLD_CUSTOM)
                   git checkout -B custom origin/master
-                  if [ "$MERGE_BASE" != "$(git rev-parse origin/master)" ] && [ -n "$PATCHES" ]; then
-                    for p in $PATCHES; do
-                      git cherry-pick $p || git cherry-pick --abort
-                    done
+                  skipped=0
+                  for p in $PATCHES; do
+                    if ! git cherry-pick $p; then
+                      git cherry-pick --abort || true
+                      skipped=$((skipped + 1))
+                      echo "::warning::跳过无法应用的提交 $(git log -1 --format='%h %s' $p)"
+                    fi
+                  done
+                  if [ "$skipped" -gt 0 ]; then
+                    echo "::warning::本次跳过 $skipped 个提交"
                   fi
                   # Restore workflow files from master to avoid push restriction
                   git checkout master -- .github/workflows/
