@@ -23,7 +23,20 @@ jobs:
                   git config user.email "github-actions[bot]@users.noreply.github.com"
                   git remote add upstream https://github.com/DIYgod/RSSHub.git || true
                   git fetch upstream
-                  git merge upstream/master --no-edit
+                  if ! git merge upstream/master --no-edit; then
+                    # 冲突处理：workflow 文件保留 fork 版本（上游也在持续改这些文件），
+                    # 其余冲突说明需要人工介入，直接失败而不是留下半合并状态。
+                    conflicts=$(git diff --name-only --diff-filter=U)
+                    non_workflow=$(echo "$conflicts" | grep -v '^\.github/workflows/' || true)
+                    if [ -n "$non_workflow" ]; then
+                      echo "::error::非 workflow 文件存在冲突，需人工处理: $non_workflow"
+                      git merge --abort
+                      exit 1
+                    fi
+                    git checkout --ours -- $conflicts
+                    git add $conflicts
+                    git commit --no-edit
+                  fi
                   # GITHUB_TOKEN cannot push workflow file changes, restore them
                   git checkout ORIG_HEAD -- .github/workflows/
                   git diff --cached --quiet || git commit -m "merge upstream, preserve fork workflows"

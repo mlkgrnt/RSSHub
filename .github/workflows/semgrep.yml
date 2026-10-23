@@ -2,15 +2,10 @@ name: Semgrep
 
 # https://semgrep.dev/docs/semgrep-ci/sample-ci-configs/#sample-github-actions-configuration-file
 on:
+    # fork 没有 SEMGREP_APP_TOKEN，push/schedule 触发必然产生空 SARIF 并失败，故只保留 PR 检查
     pull_request_target:
         branches:
             - master
-    push:
-        branches:
-            - master
-    schedule:
-        # random HH:MM to avoid a load spike on GitHub Actions at 00:00
-        - cron: 21 20 * * *
 
 jobs:
     semgrep:
