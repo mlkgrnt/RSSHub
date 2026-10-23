@@ -1,9 +1,9 @@
 import { load } from 'cheerio';
 
 import type { Route } from '@/types';
-import cache from '@/utils/cache';
 import got from '@/utils/got';
 import { parseDate } from '@/utils/parse-date';
+import { getRouteLimit } from '@/utils/route-limit';
 import timezone from '@/utils/timezone';
 
 import { fetchData, processItems, rootUrl } from './util';
@@ -59,7 +59,9 @@ export const route: Route = {
 
 async function handler(ctx) {
     const { category = 'yjglbyw' } = ctx.req.param();
-    const limit = ctx.req.query('limit') ? Number.parseInt(ctx.req.query('limit'), 10) : 30;
+    const limit = getRouteLimit(ctx, 30);
+    // Detail timestamps can refine the dates on the list page.
+    const candidateLimit = ctx.req.query('sorted') === 'false' ? limit : Math.max(30, limit);
 
     const currentUrl = new URL(`xw/${category.endsWith('/') ? category : `${category}/`}`, rootUrl).href;
 
@@ -68,19 +70,20 @@ async function handler(ctx) {
     const $ = load(response);
 
     let items = $('div.center_display_right table tbody tr td a')
-        .slice(0, limit)
+        .slice(0, candidateLimit)
         .toArray()
         .map((item) => {
-            item = $(item);
+            const $item = $(item);
+            const pubDate = $item.parent().find('span').text();
 
             return {
-                title: item.text(),
-                link: new URL(item.prop('href'), currentUrl).href,
-                pubDate: timezone(parseDate(item.parent().find('span').text()), +8),
+                title: $item.text(),
+                link: new URL($item.prop('href')!, currentUrl).href,
+                pubDate: pubDate ? timezone(parseDate(pubDate), 8) : undefined,
             };
         });
 
-    items = await processItems(items, cache.tryGet);
+    items = await processItems(items);
 
     return {
         item: items,

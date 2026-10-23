@@ -1,10 +1,13 @@
-import type { BrowserContext } from 'patchright';
+import type { Browser, BrowserContext } from 'patchright';
+import type { Mock } from 'vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import type { MultiProxyResult } from '@/utils/proxy/multi-proxy';
 
 import wait from './wait';
 
-const connect = vi.fn();
-const connectOverCDP = vi.fn();
+const connect = vi.fn<(endpoint: string) => Promise<Browser>>();
+const connectOverCDP = vi.fn<(endpoint: string) => Promise<Browser>>();
 const launch = vi.fn();
 
 let mockPage: any;
@@ -32,10 +35,19 @@ const createBrowserMocks = () => {
     };
 };
 
-const proxyMock = {
+interface ProxyMock {
+    proxyObj: { url_regex: string };
+    proxyUrlHandler: URL;
+    multiProxy: Partial<MultiProxyResult> | undefined;
+    getCurrentProxy: Mock;
+    markProxyFailed: Mock;
+    getDispatcherForProxy: Mock;
+}
+
+const proxyMock: ProxyMock = {
     proxyObj: { url_regex: '.*' },
     proxyUrlHandler: new URL('http://proxy.local'),
-    multiProxy: undefined as any,
+    multiProxy: undefined,
     getCurrentProxy: vi.fn(),
     markProxyFailed: vi.fn(),
     getDispatcherForProxy: vi.fn(),
@@ -56,12 +68,6 @@ const loadPlaywright = async () => {
     vi.doMock('@/utils/proxy', () => ({
         default: proxyMock,
     }));
-    vi.doMock('@/utils/logger', () => ({
-        default: {
-            warn: vi.fn(),
-            debug: vi.fn(),
-        },
-    }));
     const mod = await import('@/utils/playwright');
     return mod.getPlaywrightPage;
 };
@@ -79,6 +85,8 @@ const resetMocks = () => {
     delete process.env.PLAYWRIGHT_CDP_ENDPOINT;
 };
 
+const initialProxyEnv = Object.fromEntries(['PROXY_URI', 'PROXY_PROTOCOL', 'PROXY_HOST', 'PROXY_PORT', 'PROXY_AUTH', 'PROXY_URL_REGEX'].map((key) => [key, process.env[key]]));
+
 let context: BrowserContext | null = null;
 
 afterEach(async () => {
@@ -87,17 +95,17 @@ afterEach(async () => {
         context = null;
     }
 
-    delete process.env.PROXY_URI;
-    delete process.env.PROXY_PROTOCOL;
-    delete process.env.PROXY_HOST;
-    delete process.env.PROXY_PORT;
-    delete process.env.PROXY_AUTH;
-    delete process.env.PROXY_URL_REGEX;
+    for (const [key, value] of Object.entries(initialProxyEnv)) {
+        if (value === undefined) {
+            delete process.env[key];
+        } else {
+            process.env[key] = value;
+        }
+    }
 
     vi.doUnmock('dotenv/config');
     vi.doUnmock('patchright');
     vi.doUnmock('@/utils/proxy');
-    vi.doUnmock('@/utils/logger');
 
     vi.resetModules();
 });
@@ -112,7 +120,7 @@ describe('playwright', () => {
             waitUntil: 'domcontentloaded',
         });
 
-        const html = await page.evaluate(() => document.body.innerHTML);
+        const html = await page.evaluate(() => document.body.getHTML());
         expect(html.length).toBeGreaterThan(0);
 
         expect(browser?.isConnected()).toBe(true);
@@ -128,7 +136,7 @@ describe('playwright', () => {
         const browser = context.browser();
         const startTime = Date.now();
 
-        const html = await page.evaluate(() => document.body.innerHTML);
+        const html = await page.evaluate(() => document.body.getHTML());
         expect(html.length).toBeGreaterThan(0);
 
         expect(browser?.isConnected()).toBe(true);
@@ -143,37 +151,45 @@ describe('playwright', () => {
 
 describe('getPlaywrightPage (mocked)', () => {
     it('connects via ws endpoint and runs onBeforeLoad', async () => {
-        resetMocks();
-        connect.mockResolvedValue(mockBrowser);
-        connectOverCDP.mockResolvedValue(mockBrowser);
-        launch.mockResolvedValue(mockBrowser);
-        mockPage.goto.mockResolvedValue(undefined);
-        mockBrowser.close.mockResolvedValue(undefined);
-        process.env.PLAYWRIGHT_WS_ENDPOINT = 'ws://localhost:3000/?token=abc';
-        proxyMock.getCurrentProxy.mockReturnValue(null);
+        vi.useFakeTimers();
+        try {
+            resetMocks();
+            connect.mockResolvedValue(mockBrowser);
+            connectOverCDP.mockResolvedValue(mockBrowser);
+            launch.mockResolvedValue(mockBrowser);
+            mockPage.goto.mockResolvedValue(undefined);
+            mockBrowser.close.mockResolvedValue(undefined);
+            process.env.PLAYWRIGHT_WS_ENDPOINT = 'ws://localhost:3000/?token=abc';
+            proxyMock.getCurrentProxy.mockReturnValue(null);
 
-        const getPlaywrightPage = await loadPlaywright();
-        const onBeforeLoad = vi.fn();
-        const contextClose = mockContext.close;
-        const result = await getPlaywrightPage('https://example.com', {
-            noGoto: true,
-            onBeforeLoad,
-        });
+            const getPlaywrightPage = await loadPlaywright();
+            const onBeforeLoad = vi.fn();
+            const browserClose = mockBrowser.close;
+            const result = await getPlaywrightPage('https://example.com', {
+                noGoto: true,
+                onBeforeLoad,
+            });
 
-        const endpoint = connect.mock.calls[0][0] as string;
-        expect(connectOverCDP).not.toHaveBeenCalled();
-        expect(endpoint).toContain('launch=');
-        expect(endpoint).not.toContain('launch-options=');
-        const launchOptions = JSON.parse(new URL(endpoint).searchParams.get('launch') || '{}');
-        expect(launchOptions.args).not.toContainEqual(expect.stringContaining('--user-agent='));
-        expect(launchOptions.executablePath).toBeUndefined();
-        expect(launchOptions.ignoreHTTPSErrors).toBeUndefined();
-        expect(launchOptions.stealth).toBeUndefined();
-        expect(launchOptions.headless).toBe(true);
-        expect(onBeforeLoad).toHaveBeenCalled();
+            const endpoint = connect.mock.calls[0][0];
+            expect(connectOverCDP).not.toHaveBeenCalled();
+            expect(endpoint).toContain('launch=');
+            expect(endpoint).not.toContain('launch-options=');
+            const launchOptions = JSON.parse(new URL(endpoint).searchParams.get('launch') || '{}');
+            expect(launchOptions.args).not.toContainEqual(expect.stringContaining('--user-agent='));
+            expect(launchOptions.executablePath).toBeUndefined();
+            expect(launchOptions.ignoreHTTPSErrors).toBeUndefined();
+            expect(launchOptions.stealth).toBeUndefined();
+            expect(launchOptions.headless).toBe(true);
+            expect(onBeforeLoad).toHaveBeenCalled();
 
-        await result.destroy();
-        expect(contextClose).toHaveBeenCalled();
+            await result.destroy();
+            expect(browserClose).toHaveBeenCalledTimes(1);
+
+            await vi.advanceTimersByTimeAsync(30000);
+            expect(browserClose).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('overrides an existing ws endpoint launch param, dropping invalid keys like stealth', async () => {
@@ -186,9 +202,9 @@ describe('getPlaywrightPage (mocked)', () => {
         proxyMock.getCurrentProxy.mockReturnValue(null);
 
         const getPlaywrightPage = await loadPlaywright();
-        const result = await getPlaywrightPage('https://example.com', { noGoto: true });
+        const result = await getPlaywrightPage('https://example.com', { noGoto: true, useConfiguredEndpoint: true });
 
-        const endpoint = connect.mock.calls[0][0] as string;
+        const endpoint = connect.mock.calls[0][0];
         const launchOptions = JSON.parse(new URL(endpoint).searchParams.get('launch') || '{}');
         expect(launchOptions.stealth).toBeUndefined();
         expect(launchOptions.headless).toBe(true);
@@ -254,10 +270,10 @@ describe('getPlaywrightPage (mocked)', () => {
         proxyMock.getCurrentProxy.mockReturnValue({ uri: proxyUri, urlHandler: new URL(proxyUri) });
 
         const getPlaywrightPage = await loadPlaywright();
-        const result = await getPlaywrightPage('https://example.com', { noGoto: true });
+        const result = await getPlaywrightPage('https://example.com', { noGoto: true, useConfiguredEndpoint: true });
 
         const connectMock = route === 'cdp' ? connectOverCDP : connect;
-        const endpointUrl = connectMock.mock.calls[0][0] as string;
+        const endpointUrl = connectMock.mock.calls[0][0];
         const launchOptions = JSON.parse(new URL(endpointUrl).searchParams.get('launch') || '{}');
         assertLaunch(launchOptions);
 
@@ -276,12 +292,12 @@ describe('getPlaywrightPage (mocked)', () => {
         proxyMock.getCurrentProxy.mockReturnValue(null);
 
         const getPlaywrightPage = await loadPlaywright();
-        const result = await getPlaywrightPage('https://example.com', { noGoto: true });
+        const result = await getPlaywrightPage('https://example.com', { noGoto: true, useConfiguredEndpoint: true });
 
         expect(connectOverCDP).toHaveBeenCalled();
         expect(connect).not.toHaveBeenCalled();
         expect(launch).not.toHaveBeenCalled();
-        const endpoint = connectOverCDP.mock.calls[0][0] as string;
+        const endpoint = connectOverCDP.mock.calls[0][0];
         const launchOptions = JSON.parse(new URL(endpoint).searchParams.get('launch') || '{}');
         expect(launchOptions.stealth).toBe(true);
         expect(launchOptions.headless).toBe(true);
@@ -298,9 +314,10 @@ describe('getPlaywrightPage (mocked)', () => {
         const getPlaywrightPage = await loadPlaywright();
         await getPlaywrightPage('https://example.com');
 
+        const userAgentArg = expect.stringContaining('--user-agent=');
         expect(launch).toHaveBeenCalledWith(
             expect.objectContaining({
-                args: expect.not.arrayContaining([expect.stringContaining('--user-agent=')]),
+                args: expect.not.arrayContaining([userAgentArg]),
             })
         );
         expect(mockBrowser.newContext).toHaveBeenCalledWith(
@@ -341,6 +358,7 @@ describe('getPlaywrightPage (mocked)', () => {
     it('marks proxy failed when navigation throws with multi-proxy', async () => {
         resetMocks();
         launch.mockResolvedValue(mockBrowser);
+        mockBrowser.close.mockResolvedValue(undefined);
         mockPage.goto.mockRejectedValueOnce(new Error('fail'));
 
         const currentProxy = {
@@ -354,5 +372,6 @@ describe('getPlaywrightPage (mocked)', () => {
         await expect(getPlaywrightPage('https://example.com')).rejects.toThrow('fail');
 
         expect(proxyMock.markProxyFailed).toHaveBeenCalledWith(currentProxy.uri);
+        expect(mockBrowser.close).toHaveBeenCalledTimes(1);
     });
 });
