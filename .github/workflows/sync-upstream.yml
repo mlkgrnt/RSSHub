@@ -35,9 +35,12 @@ jobs:
                     fi
                     git checkout --ours -- $conflicts
                     git add $conflicts
-                    git commit --no-edit
                   fi
-                  # GITHUB_TOKEN cannot push workflow file changes, restore them
+                  # GITHUB_TOKEN 无权改动 workflow 文件，否则 push 会被拒：
+                  # 上游新增的 workflow 一律丢弃，已存在的恢复为 fork 版本
+                  git ls-tree -r --name-only ORIG_HEAD -- .github/workflows | sort > /tmp/fork-workflows.txt
+                  git ls-files .github/workflows | sort > /tmp/merged-workflows.txt
+                  comm -13 /tmp/fork-workflows.txt /tmp/merged-workflows.txt | while read -r f; do git rm -f "$f"; done
                   git checkout ORIG_HEAD -- .github/workflows/
                   git diff --cached --quiet || git commit -m "merge upstream, preserve fork workflows"
                   git push origin master
